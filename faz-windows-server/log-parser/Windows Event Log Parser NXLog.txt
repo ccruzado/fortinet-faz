@@ -1,0 +1,607 @@
+{
+  "header": {
+    "name": "Windows Event Log Parser NXLog",
+    "category": "Endpoint Devices",
+    "application": "Windows",
+    "author": "FortiAnalyzer, Fortinet Inc.",
+    "change_time": "2026-05-14 15:21:30",
+    "version": "7.6.4"
+  },
+  "data_source": {
+    "matchers": [
+      {
+        "description": "Windows logs forwarded by FortiClient.",
+        "type": "FCT-forwarded",
+        "patterns": [
+          "msg_tag_has(\"fct-forwarded-windows\")"
+        ]
+      },
+      {
+        "description": "Windows logs sent as syslog, matching by patterns.",
+        "type": "syslog",
+        "patterns": [
+          "(?<event_json>\\{\\\"EventTime\\\".+\\})",
+          "(?<time_created>[[:alnum:]\\.:-]+)[[:space:]]+(?<host_name>[[:alnum:]\\._-]+)[[:space:]]+(?<data_sourcetags>[[:alnum:]\\._-]+)[[:space:]]+(?<pid>[[:digit:]]+)[[:space:]]+(?<event_id>4[0-9][0-9][0-9])[[:space:]]+(?<event_msg>.+)$"
+        ]
+      }
+    ]
+  },
+  "parser": {
+    "rules": {
+      "rule_msg": {
+        "description": "parse msg log",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "msg.is_not_empty()"
+        },
+        "actions": [
+          "event_log = msg.match(\"(<Event.+Event>)\")",
+          "exch_log = msg.match(\"(<Objs .+Objs>)\")"
+        ]
+      },
+      "rule_event_log": {
+        "description": "parse xml event log string",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "event_log.is_not_empty()"
+        },
+        "actions": [
+          "data_sourcetype = \"Windows XML Event\"",
+          "os_family = \"Windows\"",
+          "event_log.match_xml2kv()",
+          "provider_name = ${_System-Provider-Name}",
+          "provider_guid = ${_System-Provider-Guid}",
+          "event_id = ${_System-EventID}",
+          "version = ${_System-Version}",
+          "level = ${_System-Level}",
+          "task = ${_System-Task}",
+          "sys_keywords = ${_System-Keywords}",
+          "time_created = ${_System-TimeCreated-SystemTime}",
+          "event_record_id = ${_System-EventRecordID}",
+          "execution_pid = ${_System-Execution-ProcessID}",
+          "channel = ${_System-Channel}",
+          "computer = ${_System-Computer}",
+          "security_user_id = ${_System-Security-UserID}",
+          "event_data_subj_user_sid = ${_EventData-Data-Name-SubjectUserSid}",
+          "event_data_subj_user_name = ${_EventData-Data-Name-SubjectUserName}",
+          "event_data_subj_domain_name = ${_EventData-Data-Name-SubjectDomainName}",
+          "event_data_return_code = ${_EventData-Data-Name-ReturnCode}",
+          "event_data_target_name = ${_EventData-Data-Name-TargetName}",
+          "parent_process_name = ${_EventData-Data-Name-ParentProcessName}",
+          "process_name = ${_EventData-Data-Name-ProcessName}",
+          "new_process_name = ${_EventData-Data-Name-NewProcessName}",
+          "domain_name = ${_EventData-Data-Name-TargetDomainName}",
+          "user_id = ${_EventData-Data-Name-TargetUserSid}",
+          "user_name = ${_EventData-Data-Name-TargetUserName}",
+          "user_domain = ${_EventData-Data-Name-TargetDomainName}",
+          "logon_id = ${_EventData-Data-Name-SubjectLogonId}",
+          "logon_authentication = ${_EventData-Data-Name-AuthenticationPackageName}",
+          "process_id = ${_EventData-Data-Name-ProcessId}",
+          "process_status = ${_EventData-Data-Name-SubStatus}"
+        ]
+      },
+      "rule_exch_log": {
+        "description": "parse xml exchange log string",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "exch_log.is_not_empty()"
+        },
+        "actions": [
+          "data_sourcetype = \"MS Exchange Event\"",
+          "os_family = \"MS Exchange\"",
+          "provider_name = \"Microsoft.Exchange.Management.Transport\"",
+          "exch_log.match_xml2kv_exch()",
+          "time_created = ${_Timestamp}",
+          "computer = ${_ServerHostname}",
+          "event_profile = ${_SourceContext}",
+          "net_proto = ${_Source}",
+          "event_outcome = ${_EventId}",
+          "mail_subject = ${_MessageSubject}",
+          "mail_from = ${_Sender}",
+          "net_sentbytes = ${_TotalBytes}",
+          "host_ip = ${_ServerIp}",
+          "src_ip = ${_ClientIp}",
+          "src_domain = ${_ClientHostname}",
+          "net_direction = ${_Directionality}",
+          "event_ref = ${_MessageInfo}",
+          "event_source = ${_Source}"
+        ]
+      },
+      "rule_2": {
+        "description": "parse time_created",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "time_created.is_not_empty()"
+        },
+        "actions": [
+          "_tmp_year, _tmp_month, _tmp_day, _tmp_hour, _tmp_min, _tmp_sec = time_created.match(\"([[:digit:]]+)-([[:digit:]]+)-([[:digit:]]+).([[:digit:]]+):([[:digit:]]+):([[:digit:]]+)\")",
+          "data_timestamp = to_timestamp(_tmp_year, _tmp_month, _tmp_day, _tmp_hour, _tmp_min, _tmp_sec)"
+        ]
+      },
+      "rule_3": {
+        "description": "set data_sourceid using host_name from parsed result",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "computer.is_not_empty()"
+        },
+        "actions": [
+          "data_sourcename = computer",
+          "host_name = computer"
+        ]
+      },
+      "rule_metadata": {
+        "description": "set metadata field values",
+        "actions": [
+          "host_uid = __fctuid"
+        ]
+      },
+      "rule_process_name": {
+        "description": "set app_ref using event data process names",
+        "trigger": {
+          "expression": "${condition_1} or ${condition_2} or ${condition_3}",
+          "condition_1": "parent_process_name.is_not_empty()",
+          "condition_2": "process_name.is_not_empty()",
+          "condition_3": "new_process_name.is_not_empty()"
+        },
+        "actions": [
+          "app_ref = format(\"ParentProcessName:%s;NewProcessName:%s;ProcessName:%s;ProviderGuid:%s;\", parent_process_name, new_process_name, process_name, provider_guid)"
+        ]
+      },
+      "rule_json": {
+        "description": "parse JSON log data from NXLog",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "event_json.is_not_empty()"
+        },
+        "actions": [
+          "data_sourcetype = \"Windows JSON Event\"",
+          "os_family = \"Windows\"",
+          "event_json.match_json_str()",
+          "event_id = ${_EventID}",
+          "host_name = ${_Hostname}",
+          "computer = ${_Hostname}",
+          "data_sourcename = ${_Hostname}",
+          "event_profile = ${_Message}",
+          "event_severity = lower(${_Severity})",
+          "event_type = ${_EventType}",
+          "event_source = ${_SourceName}",
+          "event_subtype = ${_Channel}",
+          "domain_name = ${_TargetDomainName}",
+          "user_name = ${_AccountName}",
+          "user_domain = ${_Domain}",
+          "user_id = ${_TargetUserSid}",
+          "src_ip = ${_IpAddress}",
+          "process_name = ${_ProcessName}",
+          "tmp_image_path = ${_ImagePath}",
+          "tmp_service_name = ${_ServiceName}",
+          "process_id = ${_ProcessID}",
+          "logon_authentication = ${_AuthenticationPackageName}",
+          "logon_id = ${_SubjectLogonId}",
+          "event_data_subj_user_name = ${_SubjectUserName}",
+          "event_record_id = ${_RecordNumber}",
+          "app_cat = ${_Category}",
+          "app_name = ${_SourceName}",
+          "app_ref = ${_ProviderGuid}",
+          "channel = ${_Channel}",
+          "version = ${_Version}",
+          "timestamp = ${_EventTime}",
+          "_tmp_date, _tmp_time = ${timestamp}.match(\"([[:digit:]-]+) ([[:digit:]:]+)\")",
+          "data_timestamp = to_timestamp_by_date_time_gmt(_tmp_date, _tmp_time)"
+        ]
+      },
+      "rule_event_id": {
+        "description": "parse Audit Event ID value",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "event_id.is_not_empty()"
+        },
+        "actions": [
+          "event_type = \"audit\"",
+          "event_tags = \"Audit\"",
+          {
+            "switch": "event_id",
+            "case": {
+              "'1102'": [
+                "event_profile = \"The audit log was cleared.\""
+              ],
+              "'4624'": [
+                "event_profile = \"A user successfully logged on to a computer.\""
+              ],
+              "'4625'": [
+                "event_profile = \"Logon failure. A logon attempt was made with an unknown user name or a known user name with a bad password.\""
+              ],
+              "'4634'": [
+                "event_profile = \"The logoff process was completed for a user.\""
+              ],
+              "'4647'": [
+                "event_profile = \"A user initiated the logoff process.\""
+              ],
+              "'4648'": [
+                "event_profile = \"A user successfully logged on to a computer using explicit credentials while already logged on as a different user.\""
+              ],
+              "'4688'": [
+                "event_profile = \"A new process has been created.\""
+              ],
+              "'4720'": [
+                "event_profile = \"A user account was created.\""
+              ],
+              "'4722'": [
+                "event_profile = \"A user account was enabled.\""
+              ],
+              "'4723'": [
+                "event_profile = \"A user password was changed.\""
+              ],
+              "'4724'": [
+                "event_profile = \"A user password was set.\""
+              ],
+              "'4726'": [
+                "event_profile = \"A user account was deleted.\""
+              ],
+              "'4727'": [
+                "event_profile = \"A global group was created.\""
+              ],
+              "'4728'": [
+                "event_profile = \"A member was added to a global group.\""
+              ],
+              "'4729'": [
+                "event_profile = \"A member was removed from a global group.\""
+              ],
+              "'4730'": [
+                "event_profile = \"A global group was deleted.\""
+              ],
+              "'4731'": [
+                "event_profile = \"A new local group was created.\""
+              ],
+              "'4732'": [
+                "event_profile = \"A member was added to a local group.\""
+              ],
+              "'4733'": [
+                "event_profile = \"A member was removed from a local group.\""
+              ],
+              "'4734'": [
+                "event_profile = \"A local group was deleted.\""
+              ],
+              "'4735'": [
+                "event_profile = \"A local group account was changed.\""
+              ],
+              "'4737'": [
+                "event_profile = \"A global group account was changed.\""
+              ],
+              "'4738'": [
+                "event_profile = \"A user account was changed.\""
+              ],
+              "'4739'": [
+                "event_profile = \"A domain policy was modified.\""
+              ],
+              "'4740'": [
+                "event_profile = \"A user account was auto locked.\""
+              ],
+              "'4741'": [
+                "event_profile = \"A computer account was created.\""
+              ],
+              "'4742'": [
+                "event_profile = \"A computer account was changed.\""
+              ],
+              "'4743'": [
+                "event_profile = \"A computer account was deleted.\""
+              ],
+              "'4744'": [
+                "event_profile = \"A local security group with security disabled was created.\""
+              ],
+              "'4745'": [
+                "event_profile = \"A local security group with security disabled was changed.\""
+              ],
+              "'4746'": [
+                "event_profile = \"A member was added to a security-disabled local security group.\""
+              ],
+              "'4747'": [
+                "event_profile = \"A member was removed from a security-disabled local security group.\""
+              ],
+              "'4748'": [
+                "event_profile = \"A security-disabled local group was deleted.\""
+              ],
+              "'4749'": [
+                "event_profile = \"A security-disabled global group was created.\""
+              ],
+              "'4750'": [
+                "event_profile = \"A security-disabled global group was changed.\""
+              ],
+              "'4751'": [
+                "event_profile = \"A member was added to a security-disabled global group.\""
+              ],
+              "'4752'": [
+                "event_profile = \"A member was removed from a security-disabled global group.\""
+              ],
+              "'4753'": [
+                "event_profile = \"A security-disabled global group was deleted.\""
+              ],
+              "'4754'": [
+                "event_profile = \"A security-enabled universal group was created.\""
+              ],
+              "'4755'": [
+                "event_profile = \"A security-enabled universal group was changed.\""
+              ],
+              "'4756'": [
+                "event_profile = \"A member was added to a security-enabled universal group.\""
+              ],
+              "'4757'": [
+                "event_profile = \"A member was removed from a security-enabled universal group.\""
+              ],
+              "'4758'": [
+                "event_profile = \"A security-enabled universal group was deleted.\""
+              ],
+              "'4759'": [
+                "event_profile = \"A security-disabled universal group was created.\""
+              ],
+              "'4760'": [
+                "event_profile = \"A security-disabled universal group was changed.\""
+              ],
+              "'4761'": [
+                "event_profile = \"A member was added to a security-disabled universal group.\""
+              ],
+              "'4762'": [
+                "event_profile = \"A member was removed from a security-disabled universal group.\""
+              ],
+              "'4763'": [
+                "event_profile = \"A security-disabled universal group was deleted.\""
+              ],
+              "'4764'": [
+                "event_profile = \"A group type was changed.\""
+              ],
+              "'4779'": [
+                "event_profile = \"A user disconnected a terminal server session without logging off.\""
+              ],
+              "'4780'": [
+                "event_profile = \"Set the security descriptor of members of administrative groups.\""
+              ],
+              "'7045'": [
+                "event_profile = \"A new service was installed in the system.\""
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "field_map": {
+      "data_sourceid": [
+        "devid"
+      ],
+      "data_sourcename": [
+        "data_sourcename"
+      ],
+      "data_sourcetype": [
+        "data_sourcetype"
+      ],
+      "data_sourceversion": [],
+      "data_sourcetags": [
+        "data_sourcetags"
+      ],
+      "data_timestamp": [
+        "data_timestamp"
+      ],
+      "app_cat": [
+        "app_cat",
+        "channel"
+      ],
+      "app_id": [],
+      "app_name": [
+        "app_name",
+        "provider_name"
+      ],
+      "app_proc": [
+        "execution_pid",
+        "pid"
+      ],
+      "app_ref": [
+        "app_ref"
+      ],
+      "app_service": [
+        "tmp_service_name"
+      ],
+      "app_state": [],
+      "app_ver": [
+        "version"
+      ],
+      "dns_query": [],
+      "dns_querytype": [],
+      "dns_response": [],
+      "dst_domain": [
+        "domain_name"
+      ],
+      "dst_geo": [
+        "dstgeoid"
+      ],
+      "dst_geo_city": [
+        "dstcity"
+      ],
+      "dst_geo_country": [
+        "dstcountry"
+      ],
+      "dst_intf": [],
+      "dst_ip": [
+        "dstip"
+      ],
+      "dst_mac": [],
+      "dst_natip": [],
+      "dst_natport": [],
+      "dst_port": [],
+      "event_action": [
+        "sys_keywords"
+      ],
+      "event_id": [
+        "event_id"
+      ],
+      "event_message": [
+        "event_log",
+        "exch_log",
+        "event_json",
+        "event_msg"
+      ],
+      "event_outcome": [
+        "event_data_return_code",
+        "event_outcome"
+      ],
+      "event_policy": [],
+      "event_profile": [
+        "event_profile"
+      ],
+      "event_ref": [
+        "event_record_id",
+        "event_ref"
+      ],
+      "event_severity": [
+        "event_severity",
+        "level"
+      ],
+      "event_subtype": [
+        "event_subtype",
+        "provider_name"
+      ],
+      "event_type": [
+        "event_type",
+        "channel"
+      ],
+      "event_source": [
+        "event_source",
+        "provider_name"
+      ],
+      "event_rawmsg": [
+        "msg"
+      ],
+      "event_tags": [
+        "event_tags"
+      ],
+      "file_accessetime": [],
+      "file_createtime": [],
+      "file_ext": [],
+      "file_hash": [],
+      "file_hashtype": [],
+      "file_name": [],
+      "file_path": [],
+      "file_size": [],
+      "host_classification": [],
+      "host_hwvendor": [],
+      "host_hwver": [],
+      "host_ip": [
+        "host_ip"
+      ],
+      "host_location": [],
+      "host_mac": [],
+      "host_name": [
+        "host_name"
+      ],
+      "host_osfamily": [
+        "os_family"
+      ],
+      "host_osname": [],
+      "host_osver": [],
+      "host_owner": [],
+      "host_type": [],
+      "host_uid": [
+        "host_uid"
+      ],
+      "http_cookie": [],
+      "http_method": [],
+      "http_referer": [],
+      "http_url": [],
+      "http_useragent": [],
+      "logon_authentication": [
+        "logon_authentication"
+      ],
+      "logon_id": [
+        "logon_id"
+      ],
+      "logon_user_claims": [
+        "event_data_subj_user_name"
+      ],
+      "mail_from": [
+        "mail_from"
+      ],
+      "mail_size": [],
+      "mail_subject": [
+        "mail_subject"
+      ],
+      "mail_to": [],
+      "net_direction": [
+        "net_direction"
+      ],
+      "net_name": [],
+      "net_payloadid": [],
+      "net_proto": [
+        "net_proto"
+      ],
+      "net_rcvdpkts": [],
+      "net_recvbytes": [],
+      "net_sentbytes": [
+        "net_sentbytes"
+      ],
+      "net_sentpkts": [],
+      "net_sessionduration": [],
+      "net_sessionid": [],
+      "net_ssid": [],
+      "process_id": [
+        "process_id"
+      ],
+      "process_name": [
+        "process_name",
+        "tmp_image_path"
+      ],
+      "process_parent_name": [
+        "parent_process_name"
+      ],
+      "process_status": [
+        "process_status"
+      ],
+      "src_domain": [
+        "src_domain"
+      ],
+      "src_geo": [
+        "srcgeoid"
+      ],
+      "src_geo_city": [
+        "srccity"
+      ],
+      "src_geo_country": [
+        "srccountry"
+      ],
+      "src_intf": [],
+      "src_ip": [
+        "srcip",
+        "src_ip"
+      ],
+      "src_mac": [],
+      "src_natip": [],
+      "src_natport": [],
+      "src_port": [],
+      "threat_action": [],
+      "threat_direction": [],
+      "threat_id": [],
+      "threat_name": [],
+      "threat_pattern": [],
+      "threat_ref": [],
+      "threat_score": [],
+      "threat_severity": [],
+      "threat_type": [],
+      "user_authtype": [],
+      "user_classification": [],
+      "user_domain": [
+        "user_domain"
+      ],
+      "user_email": [],
+      "user_group": [
+        "user_group"
+      ],
+      "user_id": [
+        "user_id"
+      ],
+      "user_location": [],
+      "user_name": [
+        "user_name"
+      ],
+      "user_org": [],
+      "user_phone": [],
+      "user_role": [],
+      "user_social": []
+    }
+  }
+}

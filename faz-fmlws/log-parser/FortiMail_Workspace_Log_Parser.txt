@@ -1,0 +1,71 @@
+{
+  "header": {
+    "name": "FortiMail Workspace Log Parser",
+    "category": "Fortinet Device",
+    "application": "Syslog"
+  },
+  "data_source": {
+    "matchers": [
+      {
+        "description": "Detect CEF FML Workspace",
+        "type": "syslog",
+        "patterns": [
+          "^.*CEF:[[:digit:]]+\\|Fortinet\\|FortimailWorkspace\\|.*\\|.*\\|.*\\|.*\\|(?<msg_body>.*)$"
+        ]
+      }
+    ]
+  },
+  "parser": {
+    "rules": {
+      "rule_hybrid_extraction_and_sanitization": {
+        "description": "Hybrid parsing, regex correction and quote sanitization",
+        "trigger": {
+          "expression": "${condition_1}",
+          "condition_1": "${msg_body}.is_not_empty()"
+        },
+        "actions": [
+          "match_logfmt(msg_body)",
+          "v_date = ${_date}",
+          "v_time = ${_time}",
+          "v_evtime = ${_eventtime}",
+          "v_tz = ${_tz}",
+          "v_type = ${_type}",
+          "v_to = ${_to}",
+          "v_domain = ${_domain}",
+          "v_from = ${_from}",
+          "v_verdict = ${_verdict}",
+          "v_msgid = ${_message_id}",
+          "v_srcip = ${_source_ip}",
+          "v_delstatus = ${_delivery_status}",
+          "v_retpath = ${_return_path}",
+          "v_intmsgid = ${_internet_message_id}",
+          "v_sub_fix = ${msg_body}.match(\"subject=[\\\\\\\"']+(.*)[\\\\\\\"']+[[:space:]]+message_id=\")",
+          "v_secanalys_fix = ${msg_body}.match(\"security_analysis=[\\\\\\\"']+(.*)[\\\\\\\"']+[[:space:]]+return_path=\")",
+          "v_sub = coalesce(v_sub_fix, ${_subject})",
+          "v_secanalys_raw = coalesce(v_secanalys_fix, ${_security_analysis})",
+          "v_secanalys_tmp = replace(v_secanalys_raw, \"\\\"\", \"\")",
+          "v_secanalys = replace(v_secanalys_tmp, \"\\\\\", \"\")",
+          "v_scanlayer_tmp = replace(${_scan_layers}, \"\\\"\", \"\")",
+          "v_scanlayer = replace(v_scanlayer_tmp, \"\\\\\", \"\")",
+          "data_timestamp = to_timestamp_by_date_time(v_date, v_time, v_tz)",
+          "data_sourcetype = \"FortiMail Workspace\""
+        ]
+      }
+    },
+    "field_map": {
+      "data_sourcetype": ["data_sourcetype"],
+      "data_timestamp": ["data_timestamp", "v_evtime"],
+      "mail_to": ["v_to"],
+      "mail_from": ["v_from"],
+      "mail_subject": ["v_sub"],
+      "src_domain": ["v_domain"],
+      "event_type": ["v_type"],
+      "event_action": ["v_verdict"],
+      "event_id": ["v_msgid"],
+      "event_message": ["v_secanalys"],
+      "src_ip": ["v_srcip"],
+      "event_outcome": ["v_delstatus"],
+      "event_subtype": ["v_scanlayer"]
+    }
+  }
+}
